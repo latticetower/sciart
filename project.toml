@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kaggle_arc"
+name = "sciart"
 authors = [
     {name = "Tatiana Malygina"},
 ]
