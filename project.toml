@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kaggle_arc"
+authors = [
+    {name = "Tatiana Malygina"},
+]
+version = "0.0.1"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "seaborn",
+    "rootutils",
+]
+readme = "readme.md"
+requires-python = ">=3.8"
+
+[tool.setuptools.packages]
+find = {}
+
+[tool.setuptools.package-data]
+"*" = [".project-root"]
