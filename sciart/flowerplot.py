@@ -3,15 +3,18 @@ from dataclasses import dataclass
 import numpy as np
 
 import matplotlib.pyplot as plt
+import matplotlib.path as mpath
+from matplotlib.markers import MarkerStyle
+from matplotlib.transforms import Affine2D
+from matplotlib.colors import ListedColormap
+import seaborn as sns
 
 import rootutils
 
 root = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 POSTER_BLUE = '#01589C'
-import matplotlib.path as mpath
-from matplotlib.markers import MarkerStyle
-from matplotlib.transforms import Affine2D
+
 
 
 flower_vertices = [
@@ -60,26 +63,30 @@ def get_flower_markers(xoffset=-0.5, yoffset=0):
 
 @dataclass
 class DataEntry:
-    biosyn_classes: List[str]
+    class_names: List[str]
     count: int
     annot_rpos: float = 0 # rho coordinate
     annot_tpos = [] # set of theta coordinates
     leaf_rpos: float = 1
     leaf_tpos: float = 0
     leaf_size: float = 0.1
-    has_one_class:bool = False
+    # has_one_class:bool = False
     bgc_class_index = None
     color = POSTER_BLUE
     marker = 'o'
     marker_size = 10
 
+    @property
+    def has_one_class(self):
+        return len(self.class_names) == 1
+
     def pick_position(self, available_positions, bgc2position, num_entries):
         def get_distance(pos_list, new_pos):
             return np.min([min((p - new_pos)% num_entries, (new_pos - p)% num_entries) for p in pos_list])
 
-        pos = [bgc2position[bgc_class] for bgc_class in self.biosyn_classes]
+        pos = [bgc2position[bgc_class] for bgc_class in self.class_names]
         if len(pos) == 1:
-            self.has_one_class = True
+            # self.has_one_class = True
             return pos[0], pos
         min_pos = None
         min_dist = None
@@ -92,15 +99,15 @@ class DataEntry:
         return min_pos, pos
 
 
-def extract_data(df, class_columns):
+def extract_data(df, class_columns, debug=False):    
     num_entries = len(df)
     num_classes = len(class_columns)
     num_offset_entries = num_entries / num_classes
-    theta_step_size = 2*np.pi / (num_offset_entries*num_classes)
+    theta_step_size = 2 * np.pi / (num_offset_entries*num_classes)
 
-    bgc_class2position = {bgc_class: int(i*num_offset_entries) for i, bgc_class in enumerate(biosyn_class_names)}
+    bgc_class2position = {bgc_class: int(i*num_offset_entries) for i, bgc_class in enumerate(class_columns)}
     available_positions = set(range(num_entries)) - set(bgc_class2position.values())
-    print(available_positions)
+    # print(available_positions)
     theta_positions = np.arange(num_entries)*theta_step_size
     # r_start = 0.3 # before adding mibig
     # r_step_size = 0.1
@@ -115,7 +122,10 @@ def extract_data(df, class_columns):
     all_entries = []
     for idx, row in df[df.num_classes == 1].iterrows():
         ids = row[class_columns].values.astype(bool)
+        if debug:
+            print(class_columns, ids, class_columns.dtype, ids.dtype)
         sample_classes = list(class_columns[ids])
+        print(sample_classes)
         count = row['count']
         entry = DataEntry(sample_classes, count)
         pos, annot_pos = entry.pick_position(available_positions, bgc_class2position, num_entries)
@@ -123,11 +133,11 @@ def extract_data(df, class_columns):
         # convert to coordinates and add to entry
         entry.leaf_tpos = theta_positions[pos]
         entry.annot_tpos = [theta_positions[p] for p in annot_pos]
-        assert entry.has_one_class
+        assert entry.has_one_class, str(row)
         entry.annot_rpos = r_start
         entry.leaf_size = 10
         entry.leaf_rpos = r_end + r_big_leaf_offset
-        entry.bgc_class_index = list(class_columns).index(entry.biosyn_classes[0])
+        entry.bgc_class_index = list(class_columns).index(entry.class_names[0])
         all_entries.append(entry)
 
     counts_df_reordered = df[df.num_classes > 1].sort_values(
@@ -144,14 +154,14 @@ def extract_data(df, class_columns):
         # convert to coordinates and add to entry
         entry.leaf_tpos = theta_positions[pos]
         entry.annot_tpos = [theta_positions[p] for p in annot_pos]
-        assert not entry.has_one_class
+        assert not entry.has_one_class, str(row)
         entry.leaf_size = 5
         max_r_level += 1
         entry.annot_rpos = r_start + max_r_level * r_step_size
         entry.leaf_rpos = r_end + r_leaf_offset
 
         all_entries.append(entry)
-    return all_entries
+    return all_entries, theta_step_size
 
 
 def get_arc_points(entry, theta_step_size=0.1):
@@ -216,13 +226,20 @@ def get_arc_points(entry, theta_step_size=0.1):
 
 
 
-def draw_flowerplot(data_entries, mpl_cmap, markers=None, savepath=None, title=None):
+def draw_flowerplot_inner(data_entries, mpl_cmap=None, markers=None, savepath=None, title=None, theta_step_size=1, ax_polar=None):
     if markers is None:
         markers = get_flower_markers()
+    if mpl_cmap is None:
+        palette = sns.color_palette("pastel") #, n_colors=7)
+        #palette_with_gray = sns.color_palette(palette[:6] +['#cfcfcf'])
+        #list(palette_with_gray.as_hex())
+        # palette_with_gray
+        mpl_cmap = ListedColormap(palette.as_hex())
     flower_marker, flower_marker2 = markers
-    fig, ax_polar = plt.subplots(
-        subplot_kw={'polar': True, 'clip_on':False}
-    ) # note we must use plt.subplots, not plt.subplot
+    if ax_polar is None:
+        fig, ax_polar = plt.subplots(
+            subplot_kw={'polar': True, 'clip_on':False}
+        ) # note we must use plt.subplots, not plt.subplot
 
     for entry in data_entries:
         # draw classes
@@ -296,9 +313,15 @@ def draw_flowerplot(data_entries, mpl_cmap, markers=None, savepath=None, title=N
     # path = Path(".") / f"flowerplot.png"
     if savepath is not None:
         fig.savefig(savepath, dpi=50, bbox_inches="tight", transparent=True)
-    plt.show()
+    return ax_polar
+    # plt.show()
 
 
-def draw_flowerplot(df, class_columns):
-    entries = extract_data(df, class_columns)
-    draw_flowerplot(entries)
+def draw_flowerplot(data_df, class_columns, debug=False): 
+    df = data_df.copy()
+    if isinstance(class_columns, list):
+        class_columns = np.asarray(class_columns)
+    df["num_classes"] = df[class_columns].sum(1)
+    entries, theta_step_size = extract_data(df, class_columns, debug=debug)
+    ax = draw_flowerplot_inner(entries, theta_step_size=theta_step_size)
+    return ax
