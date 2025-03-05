@@ -10,6 +10,10 @@ pip install .
 
 ## Visualization of the multiple sets: Flowerplot!
 
+![Flowerplot](images/flowerplot.png)
+
+This plot is an equivalent to punchcard plot, but it draws the data in circular coordinates. 
+
 ### Example
 
 With the random data
@@ -35,7 +39,7 @@ prepared_df.sort_values(
 )
 ```
 
-Which looks like this:
+Resulting dataframe `prepared_df` looks like this:
 
 |   | name_1 | name_2 | name_3 | name_4 | name_5 | count | num_labels |
 | - | ------ | ------ | ------ | ------ | ------ | ----- | ---------- |
@@ -46,4 +50,28 @@ Which looks like this:
 | 4 | False | False | False | False | True | 285 | 1 |
 | ... |
 
-![Flowerplot](images/flowerplot.png)
+To draw the actual plot with this data, run the following:
+
+```python
+from sciart.flowerplot import draw_flowerplot
+
+draw_flowerplot(
+    prepared_df, 
+    class_columns=class_names
+);
+```
+
+
+### Citation
+
+If you use Flowerplot in your work, please cite:
+```bibtex
+@inproceedings{
+    malygina2024exploring,
+    title={Exploring sequence landscape of biosynthetic gene clusters with protein language models},
+    author={Tatiana Malygina and Olga V. Kalinina},
+    booktitle={ICML'24 Workshop ML for Life and Material Science: From Theory to Industry Applications},
+    year={2024},
+    url={https://openreview.net/forum?id=UguakxTKG5}
+}
+```
