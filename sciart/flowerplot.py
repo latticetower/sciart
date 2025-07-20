@@ -1,12 +1,12 @@
 from typing import List
 from dataclasses import dataclass
 import numpy as np
-
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.path as mpath
 from matplotlib.markers import MarkerStyle
 from matplotlib.transforms import Affine2D
-from matplotlib.colors import ListedColormap
+from matplotlib.colors import ListedColormap, Colormap
 import seaborn as sns
 
 import rootutils
@@ -15,56 +15,15 @@ root = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True
 
 POSTER_BLUE = '#01589C'
 
+from sciart.markers.flower import get_flower_markers
 
-
-flower_vertices = [
-    [0, -1],
-    [1, -1],
-    [1, 0],
-    [1, 1],
-    [0, 1],
-    [0, 0],
-    [1, 0],
-    [0, 0],
-    [0, -1],
-    [1, 0],
-    [0.3, 0.7],
-    [-0.2, 0],
-    [0.3, -0.7],
-    [1, 0]
-]
-flower_codes = [
-    mpath.Path.MOVETO,
-    mpath.Path.CURVE3,
-    mpath.Path.LINETO,
-    mpath.Path.CURVE3,
-    mpath.Path.LINETO,
-    
-    mpath.Path.CURVE3,
-    mpath.Path.LINETO,
-    mpath.Path.CURVE3,
-    mpath.Path.LINETO,
-    
-    mpath.Path.MOVETO,
-    mpath.Path.CURVE3,
-    mpath.Path.LINETO,
-    mpath.Path.CURVE3,
-    mpath.Path.LINETO,
-]
-
-def get_flower_markers(xoffset=-0.5, yoffset=0):
-    flower_marker = mpath.Path(flower_vertices,flower_codes)
-    flower_marker_shifted = mpath.Path(
-        [(x + xoffset, y + yoffset) for (x, y) in flower_vertices], 
-        flower_codes
-    )
-    return flower_marker, flower_marker_shifted
 
 
 @dataclass
 class DataEntry:
     class_names: List[str]
     count: int
+    label: str = None
     annot_rpos: float = 0 # rho coordinate
     annot_tpos = [] # set of theta coordinates
     leaf_rpos: float = 1
@@ -99,7 +58,9 @@ class DataEntry:
         return min_pos, pos
 
 
-def extract_data(df, class_columns, debug=False):    
+def extract_data(df: pd.DataFrame, class_columns: List[str], label_column: str = None, debug: bool = False) -> tuple[list[DataEntry], float]:    
+    if label_column is not None and not label_column in df.columns:
+        label_column = None
     num_entries = len(df)
     num_classes = len(class_columns)
     num_offset_entries = num_entries / num_classes
@@ -127,7 +88,9 @@ def extract_data(df, class_columns, debug=False):
         sample_classes = list(class_columns[ids])
         print(sample_classes)
         count = row['count']
-        entry = DataEntry(sample_classes, count)
+        
+        label = row[label_column] if label_column is not None and label_column in row.index else None
+        entry = DataEntry(sample_classes, count, label=label)
         pos, annot_pos = entry.pick_position(available_positions, bgc_class2position, num_entries)
         # print(pos, annot_pos)
         # convert to coordinates and add to entry
@@ -144,11 +107,12 @@ def extract_data(df, class_columns, debug=False):
         by=["num_classes", "count"]+list(class_columns), 
         ascending=[False, False]+[False]*num_classes)
 
-    for idx, row in counts_df_reordered.iterrows():
+    for _, row in counts_df_reordered.iterrows():
         ids = row[class_columns].values.astype(bool)
         sample_classes = list(class_columns[ids])
         count = row['count']
-        entry = DataEntry(sample_classes, count)
+        label = row[label_column] if label_column is not None and label_column in row.index else None
+        entry = DataEntry(sample_classes, count, label=label)
         pos, annot_pos = entry.pick_position(available_positions, bgc_class2position, num_entries)
         # print(pos, annot_pos)
         # convert to coordinates and add to entry
@@ -161,10 +125,11 @@ def extract_data(df, class_columns, debug=False):
         entry.leaf_rpos = r_end + r_leaf_offset
 
         all_entries.append(entry)
+
     return all_entries, theta_step_size
 
 
-def get_arc_points(entry, theta_step_size=0.1):
+def get_arc_points(entry: DataEntry, theta_step_size: float = 0.1):
     if entry.has_one_class:
         return
 
@@ -183,7 +148,7 @@ def get_arc_points(entry, theta_step_size=0.1):
                 #print("set new value", min_dist, b_closest, dist_value, b_point)
                 min_dist = dist_value
                 b_closest = b_point
-        #print("b_closest", a_point, b_closest)
+        # print("b_closest", a_point, b_closest)
         # get coordinates and draw plot segment
         # simple version
         if a_point > b_closest:
@@ -226,7 +191,13 @@ def get_arc_points(entry, theta_step_size=0.1):
 
 
 
-def draw_flowerplot_inner(data_entries, mpl_cmap=None, markers=None, savepath=None, title=None, theta_step_size=1, ax_polar=None):
+def draw_flowerplot_inner(data_entries: List[DataEntry], 
+                          mpl_cmap: Colormap = None, 
+                          markers=None, 
+                          savepath=None, 
+                          title=None, 
+                          theta_step_size=1, 
+                          ax_polar=None):
     if markers is None:
         markers = get_flower_markers()
     if mpl_cmap is None:
@@ -277,12 +248,18 @@ def draw_flowerplot_inner(data_entries, mpl_cmap=None, markers=None, savepath=No
             marker = MarkerStyle(flower_marker, transform=rotation_transform)
 
         ax_polar.scatter([entry.leaf_tpos], [leaf_rcenter], marker=marker, s=leaf_size**2, color=entry.color)
+        text = entry.count if entry.label is None else entry.label
         if entry.has_one_class:
-            ax_polar.annotate(entry.count, (entry.leaf_tpos, leaf_rcenter), horizontalalignment='center', verticalalignment='center', fontsize=24,)
+            ax_polar.annotate(
+                text, 
+                (entry.leaf_tpos, leaf_rcenter), 
+                horizontalalignment='center', 
+                verticalalignment='center', 
+                fontsize=24,)
             # print(entry.biosyn_classes[0])
         else:
             ax_polar.annotate(
-                entry.count, 
+                text, 
                 (entry.leaf_tpos, entry.leaf_rpos+ 0.15+ 0.25*(entry.count> 100)), 
                 horizontalalignment='center',
                 verticalalignment='center',
@@ -317,11 +294,26 @@ def draw_flowerplot_inner(data_entries, mpl_cmap=None, markers=None, savepath=No
     # plt.show()
 
 
-def draw_flowerplot(data_df, class_columns, debug=False): 
+def draw_flowerplot(data_df: pd.DataFrame, 
+                    class_columns: list[str], 
+                    mpl_cmap: Colormap = None, 
+                    markers: tuple[mpath.Path, mpath.Path] = None, 
+                    title: str = None, 
+                    ax_polar: plt.Axes = None, 
+                    debug: bool = False) -> plt.Axes: 
     df = data_df.copy()
     if isinstance(class_columns, list):
         class_columns = np.asarray(class_columns)
-    df["num_classes"] = df[class_columns].sum(1)
+    if not "num_classes" in df.columns:
+        df["num_classes"] = df[class_columns].sum(1)
     entries, theta_step_size = extract_data(df, class_columns, debug=debug)
-    ax = draw_flowerplot_inner(entries, theta_step_size=theta_step_size)
+    ax = draw_flowerplot_inner(
+        entries, 
+        mpl_cmap=mpl_cmap, 
+        markers=markers, 
+        savepath=None, 
+        title=title, 
+        theta_step_size=theta_step_size,
+        ax_polar=ax_polar
+    )
     return ax
