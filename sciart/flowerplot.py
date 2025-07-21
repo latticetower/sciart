@@ -58,7 +58,11 @@ class DataEntry:
         return min_pos, pos
 
 
-def extract_data(df: pd.DataFrame, class_columns: List[str], label_column: str = None, debug: bool = False) -> tuple[list[DataEntry], float]:    
+def extract_data(
+        df: pd.DataFrame, class_columns: List[str], 
+        label_column: str = None, 
+        debug: bool = False) -> tuple[list[DataEntry], float]:
+ 
     if label_column is not None and not label_column in df.columns:
         label_column = None
     num_entries = len(df)
@@ -300,13 +304,19 @@ def draw_flowerplot(data_df: pd.DataFrame,
                     markers: tuple[mpath.Path, mpath.Path] = None, 
                     title: str = None, 
                     ax_polar: plt.Axes = None, 
+                    label_column="label",
                     debug: bool = False) -> plt.Axes: 
     df = data_df.copy()
     if isinstance(class_columns, list):
         class_columns = np.asarray(class_columns)
     if not "num_classes" in df.columns:
         df["num_classes"] = df[class_columns].sum(1)
-    entries, theta_step_size = extract_data(df, class_columns, debug=debug)
+    entries, theta_step_size = extract_data(
+        df, 
+        class_columns, 
+        label_column=label_column, 
+        debug=debug
+    )
     ax = draw_flowerplot_inner(
         entries, 
         mpl_cmap=mpl_cmap, 
